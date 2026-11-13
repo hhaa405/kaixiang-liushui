@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title></title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" />
+  <style>
+    :root { --paper:#f4f0e8; --ink:#1c1917; --muted:#78716c; --card:#fffdf8; --stamp:#be123c; --stamp-ink:#fff7f8; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: "Noto Sans TC", "PingFang TC", sans-serif; }
+    button { font: inherit; cursor: pointer; }
+    #lock { min-height: 100dvh; display: grid; place-items: center; }
+    #lock input { width: 9rem; border: 0; border-bottom: 1px solid var(--ink); background: transparent; text-align: center; font-size: 1.125rem; outline: none; }
+    main { max-width: 32rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+    .row { display: flex; align-items: flex-end; justify-content: space-between; gap: .75rem; margin-bottom: 1.25rem; }
+    h1 { margin: 0; font-size: 1.875rem; font-weight: 900; letter-spacing: -0.02em; }
+    .muted { color: var(--muted); }
+    .kicker { margin: 0; font-size: .875rem; font-weight: 500; }
+    .badge { border-radius: 999px; padding: .5rem .75rem; font-size: .875rem; font-weight: 900; background: var(--card); }
+    .badge.on { background: var(--stamp); color: var(--stamp-ink); }
+    .card { background: var(--card); border-radius: 1.5rem; }
+    .cashbox { padding: 1.25rem; }
+    .cash { margin: .25rem 0 0; font-size: 2.25rem; font-weight: 900; font-variant-numeric: tabular-nums; }
+    .bar { margin-top: 1rem; height: .5rem; border-radius: 999px; background: var(--paper); overflow: hidden; }
+    .bar i, .hold i { display: block; height: 100%; border-radius: 999px; }
+    .bar i { background: var(--stamp); }
+    .hold { margin-top: .5rem; height: .75rem; }
+    .hold i { background: var(--ink); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin-top: .75rem; }
+    .stat { padding: .75rem; border-radius: 1rem; }
+    .stat p { margin: 0; }
+    .stat b { display: block; margin-top: .25rem; font-size: .875rem; }
+    .rule { margin-top: .75rem; padding: 1rem 1.25rem; }
+    .rule h2, .loghead h2 { margin: 0; font-size: 1rem; }
+    .loghead { display: flex; align-items: center; justify-content: space-between; margin: 1rem 0 .5rem; }
+    .paces { display: flex; gap: .25rem; background: var(--card); border-radius: 999px; padding: .25rem; }
+    .paces button, .actions button, #swap, #rerun { border: 0; border-radius: 999px; min-height: 2.75rem; font-weight: 800; }
+    .paces button { min-height: 2.75rem; padding: 0 .75rem; background: transparent; color: var(--muted); }
+    .paces button.on { background: var(--ink); color: var(--card); }
+    ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .5rem; }
+    li { background: var(--card); border-radius: 1rem; padding: .75rem 1rem; font-size: .875rem; }
+    .actions { display: flex; gap: .5rem; margin-top: 1rem; }
+    .actions button { flex: 1; background: var(--ink); color: var(--card); font-size: 1rem; font-weight: 900; }
+    .actions button.stamp, #rerun { background: var(--stamp); color: var(--stamp-ink); }
+    #swap { flex: 0; background: var(--card); color: var(--ink); padding: 0 1rem; font-size: .875rem; }
+    .stop { margin: .75rem 0 0; color: var(--stamp); font-size: .875rem; font-weight: 700; }
+    textarea { width: 100%; height: 7rem; margin-top: .5rem; border: 0; border-radius: 1rem; background: var(--paper); padding: .75rem; font-size: .75rem; line-height: 1.5; resize: none; word-break: break-all; }
+    #paste, #codebox { margin-top: .75rem; padding: 1rem; }
+    #eng { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; border: 0; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="lock">
+    <form id="f" autocomplete="off">
+      <input id="q" type="password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" autofocus />
+    </form>
+  </div>
+  <iframe id="eng" hidden title=""></iframe>
+  <main id="app" hidden></main>
+  <script>
+    const MARK = "d6aae0484d4b6a87f8f5a300954d493456ab58a8a7f4f07d2998be7b595eff89";
+    const PACE = { slow: [1, 420, "細看"], mid: [1, 90, "順"], fast: [13, 16, "最快"] };
+    const app = document.getElementById("app");
+    const eng = document.getElementById("eng");
+    let pace = "mid";
+    let phase = "boot";
+    let snap = null;
+    let startCash = 0;
+    let code = "";
+    let draft = "";
+    let copied = false;
+    let showPaste = false;
+    let ready = false;
+    let loaded = "";
+    let autostart = false;
+
+    async function matches(value) {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+      return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("") === MARK;
+    }
+
+    document.getElementById("f").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const input = document.getElementById("q");
+      if (!(await matches(input.value))) { input.value = ""; return; }
+      sessionStorage.setItem("v", "1");
+      unlock();
+    });
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => {
+        if (c === "&") return "&" + "amp;";
+        if (c === "<") return "&" + "lt;";
+        if (c === ">") return "&" + "gt;";
+        if (c === '"') return "&" + "quot;";
+        return "&" + "#39;";
+      });
+    }
+    function money(n) {
+      const v = Math.round(n || 0);
+      return (v < 0 ? "-" : "") + "NT$" + Math.abs(v).toLocaleString("zh-Hant");
+    }
+    function post(msg) { eng.contentWindow && eng.contentWindow.postMessage(msg, "*"); }
+    function status() {
+      if (phase === "run") return ["進行中", true];
+      if (phase === "done") return [snap && snap.reason && snap.reason.includes("現金") ? "沒錢了" : "買不了", false];
+      if (phase === "error") return ["出錯", false];
+      return ["準備", false];
+    }
+
+    function draw() {
+      const q = snap ? snap.q : 0;
+      const cash = snap ? snap.cash : 0;
+      const spentRaw = startCash > 0 ? Math.max(0, Math.min(100, ((startCash - cash) / startCash) * 100)) : 0;
+      const spentLabel = spentRaw >= 10 ? Math.round(spentRaw) + "%" : spentRaw.toFixed(1) + "%";
+      const qPct = Math.min(100, Math.round((q / 1000) * 100));
+      const st = status();
+      const lines = snap && snap.log.length ? snap.log : ["等第一天的紀錄"];
+      app.innerHTML = `
+        <header class="row">
+          <div>
+            <p class="kicker muted">台灣包裹盲盒</p>
+            <h1>開箱流水</h1>
+          </div>
+          <span class="badge${st[1] ? " on" : ""}">${st[0]}</span>
+        </header>
+        <section class="card cashbox">
+          <p class="kicker muted">${snap ? esc(snap.name) + " · 第 " + snap.mon + " 月第 " + snap.day + " 天" : "正在讀存檔"}</p>
+          <p class="cash">${money(cash)}</p>
+          <div class="bar"><i style="width:${spentRaw}%"></i></div>
+          <p class="kicker muted">現金已花掉 ${spentLabel}</p>
+        </section>
+        <section class="grid">
+          ${stat("等級", snap ? "Lv " + snap.lv : "—")}
+          ${stat("今天還能買", snap ? snap.od + " 次" : "—")}
+          ${stat("背包", snap ? snap.inv.toLocaleString("zh-Hant") + " 件" : "—")}
+        </section>
+        <section class="card rule">
+          <div class="row" style="margin:0">
+            <h2>待拆</h2>
+            <p class="kicker">${q.toLocaleString("zh-Hant")} / 1,000</p>
+          </div>
+          <div class="bar hold"><i style="width:${qPct}%"></i></div>
+          <p class="kicker muted">每天把 3C「${snap ? snap.tier : "精品整倉"}」買滿再睡覺，${snap ? "一箱 " + money(snap.price) + "。" : ""}滿了就全選鑑定、掛七折，再繼續買，直到沒錢。</p>
+        </section>
+        <section class="grid">
+          ${stat("買了", snap ? snap.bought.toLocaleString("zh-Hant") + " 箱" : "—")}
+          ${stat("上架", snap ? snap.listed.toLocaleString("zh-Hant") + " 件" : "—")}
+          ${stat("過了", snap ? snap.days + " 天" : "—")}
+        </section>
+        <div class="loghead">
+          <h2>流水</h2>
+          <div class="paces">
+            ${Object.keys(PACE).map((k) => `<button type="button" data-pace="${k}" class="${pace === k ? "on" : ""}">${PACE[k][2]}</button>`).join("")}
+          </div>
+        </div>
+        <ol>${lines.map((line) => `<li>${esc(line)}</li>`).join("")}</ol>
+        <div class="actions">
+          ${phase === "run"
+            ? `<button type="button" id="pause">暫停</button>`
+            : phase === "done"
+              ? `<button type="button" id="copy" class="stamp">${copied ? "已複製" : code ? "複製存檔碼" : "產生存檔碼"}</button>`
+              : `<button type="button" id="go" ${!snap || snap.done ? "disabled" : ""}>繼續</button>`}
+          <button type="button" id="swap">換存檔</button>
+        </div>
+        ${phase === "done" && snap && snap.reason ? `<p class="stop">${snap.reason}。現金 ${money(snap.cash)}。</p>` : ""}
+        ${showPaste ? `<section class="card" id="paste"><p class="kicker">貼上存檔碼</p><textarea id="draft"></textarea><button type="button" id="rerun">用這組重跑</button></section>` : ""}
+        ${code ? `<section class="card" id="codebox"><h2>最新存檔碼</h2><textarea readonly id="out"></textarea></section>` : ""}
+        ${phase === "error" ? `<p class="stop" id="err"></p>` : ""}
+        ${phase === "boot" ? `<p class="kicker muted">正在準備規則，馬上就會開始跑。</p>` : ""}
+      `;
+      const draftEl = document.getElementById("draft");
+      if (draftEl) draftEl.value = draft;
+      const out = document.getElementById("out");
+      if (out) out.value = code;
+      const err = document.getElementById("err");
+      if (err) err.textContent = app.dataset.err || "";
+      app.querySelectorAll("[data-pace]").forEach((b) => b.onclick = () => {
+        pace = b.dataset.pace;
+        post({ type: "pace", speed: PACE[pace][0], gap: PACE[pace][1] });
+        draw();
+      });
+      const pause = document.getElementById("pause");
+      if (pause) pause.onclick = () => { post({ type: "pause" }); phase = "ready"; draw(); };
+      const go = document.getElementById("go");
+      if (go) go.onclick = () => { post({ type: "start", speed: PACE[pace][0], gap: PACE[pace][1] }); phase = "run"; draw(); };
+      const copy = document.getElementById("copy");
+      if (copy) copy.onclick = async () => {
+        if (!code) { post({ type: "save" }); return; }
+        try { await navigator.clipboard.writeText(code); copied = true; } catch (e) { copied = false; }
+        draw();
+      };
+      document.getElementById("swap").onclick = () => { showPaste = !showPaste; draw(); };
+      const rerun = document.getElementById("rerun");
+      if (rerun) rerun.onclick = () => {
+        draft = document.getElementById("draft").value;
+        const text = draft.trim();
+        if (!text) return;
+        code = ""; copied = false; startCash = 0; autostart = true; loaded = text; showPaste = false;
+        post({ type: "pause" });
+        post({ type: "load", code: text });
+        phase = "ready";
+        draw();
+      };
+    }
+    function stat(label, value) {
+      return `<div class="card stat"><p class="kicker muted">${label}</p><b>${value}</b></div>`;
+    }
+
+    function unlock() {
+      document.getElementById("lock").hidden = true;
+      document.title = "開箱流水";
+      app.hidden = false;
+      eng.src = "runner.html";
+      draw();
+    }
+
+    window.addEventListener("message", (e) => {
+      if (e.source !== eng.contentWindow) return;
+      const m = e.data || {};
+      if (m.type === "ready") { ready = true; phase = "ready"; maybeLoad(); draw(); }
+      else if (m.type === "snap" && m.snap) {
+        snap = m.snap;
+        if (!startCash) startCash = snap.cash;
+        if (snap.done) phase = "done";
+        else if (autostart) {
+          autostart = false;
+          post({ type: "start", speed: PACE[pace][0], gap: PACE[pace][1] });
+          phase = "run";
+        }
+        draw();
+      } else if (m.type === "code") {
+        code = String(m.code || "");
+        if (m.snap) snap = m.snap;
+        phase = "done";
+        draw();
+      } else if (m.type === "error") {
+        app.dataset.err = String(m.message || "出錯了");
+        phase = "error";
+        draw();
+      }
+    });
+
+    function maybeLoad() {
+      if (!ready || loaded) return;
+      fetch("engine/start.txt").then((r) => r.text()).then((text) => {
+        loaded = text.trim();
+        draft = loaded;
+        autostart = true;
+        post({ type: "load", code: loaded });
+      }).catch(() => { app.dataset.err = "讀不到存檔"; phase = "error"; draw(); });
+    }
+
+    if (sessionStorage.getItem("v") === "1") unlock();
+  </script>
+</body>
+</html>
