@@ -156,7 +156,7 @@
       if (typeof TW === "undefined") say({ type: "error", message: String(e.message || "規則載入失敗") });
     });
     const realFetch = window.__fetch;
-    Promise.all(Array.from({ length: 17 }, (_, i) => realFetch("./engine/p/" + String(i).padStart(2, "0") + ".js").then((r) => r.text()))).then((parts) => {
+    Promise.all(Array.from({ length: 70 }, (_, i) => realFetch("./engine/p/" + String(i).padStart(2, "0") + ".js").then((r) => r.text()))).then((parts) => {
       const s = document.createElement("script");
       s.text = parts.join("");
       document.body.appendChild(s);
