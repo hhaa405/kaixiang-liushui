@@ -244,7 +244,7 @@
   function loadCode(code) {
     quiet();
     const raw = String(code || "").trim();
-    const m = raw.match(/[~\uff5e]\s*ACC\s*[~\uff5e]\s*([0-9a-f]{8,40}\.[0-9a-f]{32,64})/i);
+    const m = raw.match(/[~～]\s*ACC\s*[~～]\s*([0-9a-f]{8,40}\.[0-9a-f]{32,64})/i);
     try {
       if (m && typeof BBS !== "undefined") {
         BBS.tok = m[1].toLowerCase();
