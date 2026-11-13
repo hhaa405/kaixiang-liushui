@@ -156,9 +156,14 @@
       if (typeof TW === "undefined") say({ type: "error", message: String(e.message || "規則載入失敗") });
     });
     const realFetch = window.__fetch;
-    Promise.all(Array.from({ length: 70 }, (_, i) => realFetch("./engine/p/" + String(i).padStart(2, "0") + ".js").then((r) => r.text()))).then((parts) => {
+    Promise.all(Array.from({ length: 40 }, (_, i) => realFetch("./engine/b/" + String(i).padStart(2, "0") + ".txt").then((r) => r.text()))).then(async (parts) => {
+      const b64 = parts.join("").replace(/\s/g, "");
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).text();
       const s = document.createElement("script");
-      s.text = parts.join("");
+      s.text = text;
       document.body.appendChild(s);
       if (typeof TW === "undefined") {
         say({ type: "error", message: "規則沒有載入" });
