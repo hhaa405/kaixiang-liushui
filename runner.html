@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <title>開箱流水引擎</title>
+</head>
+<body>
+  <div id="g"><div id="ui"></div><canvas id="cv"></canvas></div>
+  <script>
+    (function () {
+      function node() {
+        const bag = {
+          position: null,
+          rotation: null,
+          scale: { x: 1, y: 1, z: 1, set() { return this; } },
+          quaternion: { set() {}, copy() {} },
+          userData: {},
+          children: [],
+          material: {},
+          geometry: { parameters: {} },
+          shadowMap: { enabled: false },
+          domElement: document.createElement("canvas"),
+        };
+        const self = new Proxy(function () { return node(); }, {
+          get(_t, p) {
+            if (p === "then" || typeof p === "symbol") return undefined;
+            if (p === "prototype") return {};
+            if (Object.prototype.hasOwnProperty.call(bag, p) && bag[p] !== null && bag[p] !== undefined) return bag[p];
+            if (p === "position" || p === "rotation" || p === "up") {
+              const v = { x: 0, y: 0, z: 0 };
+              v.set = function () { return v; };
+              v.copy = function () { return v; };
+              v.add = function () { return v; };
+              bag[p] = v;
+              return v;
+            }
+            const child = node();
+            bag[p] = child;
+            return child;
+          },
+          set(_t, p, v) { bag[p] = v; return true; },
+          apply() { return node(); },
+          construct() { return node(); },
+        });
+        bag.add = function () { return self; };
+        bag.remove = function () { return self; };
+        bag.lookAt = function () { return self; };
+        bag.clone = function () { return node(); };
+        bag.traverse = function (fn) { try { fn(self); } catch (e) {} };
+        return self;
+      }
+      window.THREE = new Proxy(function () { return node(); }, {
+        get() { return node(); },
+        construct() { return node(); },
+        apply() { return node(); },
+      });
+
+      const grad = { addColorStop() {} };
+      HTMLCanvasElement.prototype.getContext = function () {
+        const canvas = this;
+        return new Proxy({ canvas: canvas, fillStyle: "", strokeStyle: "", font: "16px sans-serif" }, {
+          get(t, p) {
+            if (p in t) return t[p];
+            if (p === "createImageData" || p === "getImageData") {
+              return function (w, h) {
+                if (w && typeof w === "object") { h = w.height; w = w.width; }
+                w = w || canvas.width || 1;
+                h = h || canvas.height || 1;
+                return { data: new Uint8ClampedArray(Math.max(4, w * h * 4)), width: w, height: h };
+              };
+            }
+            if (p === "createLinearGradient" || p === "createRadialGradient") return function () { return grad; };
+            if (p === "measureText") return function () { return { width: 12 }; };
+            return function () {};
+          },
+          set(t, p, v) { t[p] = v; return true; },
+        });
+      };
+      window.requestAnimationFrame = function () { return 0; };
+      window.cancelAnimationFrame = function () {};
+      window.matchMedia = function () { return { matches: false, addEventListener() {}, removeEventListener() {} }; };
+      function AC() {}
+      AC.prototype.createOscillator = function () { return { frequency: { value: 0 }, connect() {}, start() {}, stop() {} }; };
+      AC.prototype.createGain = function () { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {}, value: 0 }, connect() {} }; };
+      AC.prototype.createBuffer = function (_c, len) { return { getChannelData: function () { return new Float32Array(len || 1); } }; };
+      AC.prototype.createBufferSource = function () { return { connect() {}, start() {}, stop() {} }; };
+      AC.prototype.createBiquadFilter = function () { return { frequency: { value: 0 }, connect() {} }; };
+      AC.prototype.resume = function () { return Promise.resolve(); };
+      AC.prototype.destination = {};
+      window.AudioContext = AC;
+      window.webkitAudioContext = AC;
+      window.__fetch = window.fetch.bind(window);
+      window.fetch = function () { return Promise.reject(new Error("offline")); };
+      window.EventSource = function () { this.close = function () {}; };
+      window.WebSocket = function () { this.close = function () {}; this.send = function () {}; };
+    })();
+  </script>
+  <script src="./engine/policy.js"></script>
+  <script>
+    function say(msg) { parent.postMessage(msg, "*"); }
+    let running = false;
+    let speed = 2;
+    let gap = 80;
+    let timer = 0;
+    function halt() { running = false; clearTimeout(timer); }
+    function loop() {
+      if (!running || typeof TW === "undefined") return;
+      const t0 = performance.now();
+      let snap;
+      let n = 0;
+      while (n < speed && performance.now() - t0 < 24) {
+        snap = TW.day();
+        n++;
+        if (snap.done) break;
+      }
+      say({ type: "snap", snap: snap });
+      if (snap.done) {
+        halt();
+        try { say({ type: "code", code: TW.exportCode(), snap: TW.snap() }); }
+        catch (err) { say({ type: "error", message: String(err && err.message || err) }); }
+        return;
+      }
+      timer = setTimeout(loop, gap);
+    }
+    const pending = [];
+    let armed = false;
+    function handle(e) {
+      const m = e.data || {};
+      if (typeof TW === "undefined") {
+        say({ type: "error", message: "規則還沒載入好" });
+        return;
+      }
+      if (m.type === "load") {
+        halt();
+        try { say({ type: "snap", snap: TW.loadCode(m.code) }); }
+        catch (err) { say({ type: "error", message: String(err && err.message || err) }); }
+      } else if (m.type === "start") {
+        if (typeof m.speed === "number") speed = m.speed;
+        if (typeof m.gap === "number") gap = m.gap;
+        if (!TW.snap().done) { running = true; loop(); }
+      } else if (m.type === "pause") {
+        halt();
+      } else if (m.type === "pace") {
+        if (typeof m.speed === "number") speed = m.speed;
+        if (typeof m.gap === "number") gap = m.gap;
+      } else if (m.type === "save") {
+        try { say({ type: "code", code: TW.exportCode(), snap: TW.snap() }); }
+        catch (err) { say({ type: "error", message: String(err && err.message || err) }); }
+      }
+    }
+    window.addEventListener("message", function (e) {
+      if (!armed) { pending.push(e); return; }
+      handle(e);
+    });
+    window.addEventListener("error", function (e) {
+      if (typeof TW === "undefined") say({ type: "error", message: String(e.message || "規則載入失敗") });
+    });
+    const realFetch = window.__fetch;
+    Promise.all(Array.from({ length: 17 }, (_, i) => realFetch("./engine/p/" + String(i).padStart(2, "0") + ".js").then((r) => r.text()))).then((parts) => {
+      const s = document.createElement("script");
+      s.text = parts.join("");
+      document.body.appendChild(s);
+      if (typeof TW === "undefined") {
+        say({ type: "error", message: "規則沒有載入" });
+        return;
+      }
+      armed = true;
+      say({ type: "ready" });
+      pending.splice(0).forEach(handle);
+    }).catch((err) => say({ type: "error", message: String(err && err.message || err) }));
+  </script>
+</body>
+</html>
